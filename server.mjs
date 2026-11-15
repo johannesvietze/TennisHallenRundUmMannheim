@@ -84,13 +84,26 @@ const server = createServer(async (request, response) => {
       return json(response, 400, { error: error instanceof SyntaxError ? 'Ungültige Anfrage.' : error.message });
     }
 
+    const stream = request.headers.accept === 'application/x-ndjson';
+    if (stream) {
+      response.writeHead(200, {
+        'content-type': 'application/x-ndjson; charset=utf-8',
+        'cache-control': 'no-store, no-transform'
+      });
+      response.flushHeaders();
+    }
+
     const results = await Promise.all(halls.map(async hall => {
+      let result;
       try {
-        return { url: hall.url, ...await cachedAvailability(hall, monday, refresh) };
+        result = { url: hall.url, ...await cachedAvailability(hall, monday, refresh) };
       } catch (error) {
-        return { url: hall.url, error: error.message };
+        result = { url: hall.url, error: error.message };
       }
+      if (stream && !response.destroyed) response.write(JSON.stringify(result) + '\n');
+      return result;
     }));
+    if (stream) return response.end();
     return json(response, 200, { monday, halls: results });
   }
 

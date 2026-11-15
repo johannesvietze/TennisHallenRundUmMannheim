@@ -66,6 +66,14 @@
       </footer>
     </section>
   </main>
+  <dialog id="progress-dialog" aria-labelledby="progress-title">
+    <div class="dialog-header"><h2 id="progress-title">Buchungspläne werden geladen</h2></div>
+    <div class="dialog-content">
+      <progress id="load-progress" value="0" aria-label="Ladefortschritt"></progress>
+      <p id="load-progress-count" class="progress-count" role="status"></p>
+      <ul id="load-progress-list" class="progress-list" role="list"></ul>
+    </div>
+  </dialog>
   <dialog id="details" aria-labelledby="details-title">
     <div class="dialog-header">
       <div><p class="dialog-kicker">Stundenübersicht</p><h2 id="details-title"></h2></div>

@@ -7,6 +7,7 @@ const hallSelect = $('#hall-filter');
 const refreshButton = $('#refresh');
 const details = $('#details');
 const hallDialog = $('#halls-dialog');
+const progressDialog = $('#progress-dialog');
 
 const storageKey = 'hallenzeiten.halls';
 const weekdayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -258,7 +259,59 @@ function renderAvailabilityWarning(enabled) {
   }
 }
 
-async function refresh(refreshNow = false) {
+function setProgressStatus(status, state, icon, label) {
+  status.className = `progress-status ${state}`;
+  const symbol = element('span', 'progress-icon', icon);
+  symbol.setAttribute('aria-hidden', 'true');
+  status.replaceChildren(symbol, element('span', null, label));
+}
+
+function showLoadingProgress(enabled) {
+  const progress = $('#load-progress');
+  const count = $('#load-progress-count');
+  const list = $('#load-progress-list');
+  const rowStatuses = new Map();
+  list.replaceChildren(...enabled.map(hall => {
+    const row = element('li');
+    const status = element('span');
+    setProgressStatus(status, 'pending', '…', 'Wartet');
+    rowStatuses.set(hall.url, status);
+    row.append(element('span', 'progress-hall', hall.name), status);
+    return row;
+  }));
+  progress.max = enabled.length;
+  progress.value = 0;
+  count.textContent = `0 von ${enabled.length} abgeschlossen`;
+  progressDialog.showModal();
+
+  return (hall, completed) => {
+    const status = rowStatuses.get(hall.url);
+    if (hall.bookingOnly) setProgressStatus(status, 'external', '↗', 'Nur Buchungslink');
+    else if (hall.error) setProgressStatus(status, 'failed', '×', 'Fehler');
+    else if (hall.days?.some(day => day.incomplete)) setProgressStatus(status, 'failed', '×', 'Unvollständig');
+    else setProgressStatus(status, 'loaded', '✓', 'Geladen');
+    progress.value = completed;
+    count.textContent = `${completed} von ${enabled.length} abgeschlossen`;
+  };
+}
+
+async function readAvailabilityStream(response, receive) {
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  try {
+    let remainder = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const lines = (remainder + value).split('\n');
+      remainder = lines.pop();
+      for (const line of lines) receive(JSON.parse(line));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function refresh({ refreshNow = false, showProgress = false } = {}) {
   const id = ++requestId;
   const enabled = enabledHalls();
   if (!refreshNow) results = new Map();
@@ -266,23 +319,40 @@ async function refresh(refreshNow = false) {
   render();
   if (!loading) return;
 
+  const reportProgress = showProgress ? showLoadingProgress(enabled) : null;
+  const received = new Map();
+  const pending = new Set(enabled.map(hall => hall.url));
+  function receive(result) {
+    if (id !== requestId || !pending.delete(result.url)) return;
+    received.set(result.url, result);
+    reportProgress?.(result, received.size);
+  }
+
   try {
     const response = await fetch('/api/availability', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ monday, urls: enabled.map(hall => hall.url), refresh: refreshNow })
+      headers: {
+        'content-type': 'application/json',
+        accept: showProgress ? 'application/x-ndjson' : 'application/json'
+      },
+      body: JSON.stringify({ monday, urls: [...pending], refresh: refreshNow })
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
-    if (id !== requestId) return;
-    results = new Map(data.halls.map(hall => [hall.url, hall]));
+    if (!response.ok) throw new Error('Buchungspläne konnten nicht geladen werden.');
+    if (response.headers.get('content-type')?.startsWith('application/x-ndjson')) {
+      await readAvailabilityStream(response, receive);
+    } else {
+      const data = await response.json();
+      data.halls.forEach(receive);
+    }
   } catch {
-    if (id !== requestId) return;
-    results = new Map(enabled.map(hall => [hall.url, { error: 'Der Buchungsplan konnte nicht geladen werden.' }]));
+    // Bereits empfangene Ergebnisse bleiben erhalten. Offene Hallen werden unten als Fehler markiert.
   } finally {
     if (id === requestId) {
+      for (const url of pending) receive({ url, error: 'Der Buchungsplan konnte nicht geladen werden.' });
+      results = received;
       loading = false;
       render();
+      if (showProgress && progressDialog.open) setTimeout(() => progressDialog.close(), 400);
     }
   }
 }
@@ -386,7 +456,7 @@ $('#previous').addEventListener('click', () => navigate(addDays(monday, -7)));
 $('#next').addEventListener('click', () => navigate(addDays(monday, 7)));
 $('#this-week').addEventListener('click', () => navigate(thisWeek));
 $('#next-week').addEventListener('click', () => navigate(nextWeek));
-refreshButton.addEventListener('click', () => refresh(true));
+refreshButton.addEventListener('click', () => refresh({ refreshNow: true }));
 $('#manage').addEventListener('click', () => {
   renderHallList();
   showHallError('');
@@ -394,4 +464,4 @@ $('#manage').addEventListener('click', () => {
 });
 
 renderHallFilter();
-refresh();
+refresh({ showProgress: true });
