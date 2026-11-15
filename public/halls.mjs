@@ -13,15 +13,13 @@ const additionalHalls = [
 ];
 
 const hockenheim = { name: 'Hockenheim', url: 'https://tc-hockenheim.ebusy.de/court-module/451' };
+const walldorf = { name: 'Walldorf', url: 'https://app.tennis04.com/de/walldorf/buchungsplan' };
+const retiredZapUrl = 'https://www.eversports.de/widget/w/mz2a2z';
 const previousDefaults = [...originalHalls, ...additionalHalls, hockenheim];
-const newHalls = [
-  { name: 'Walldorf', url: 'https://app.tennis04.com/de/walldorf/buchungsplan' },
-  { name: 'ZAP Nußloch', url: 'https://www.eversports.de/widget/w/mz2a2z' }
-];
 
-export const defaultHalls = [...previousDefaults, ...newHalls];
+export const defaultHalls = [...previousDefaults, walldorf];
 export const maxHalls = 16;
-export const hallListVersion = 4;
+export const hallListVersion = 5;
 
 export function restoreHalls(saved) {
   const version = saved?.version ?? 1;
@@ -34,6 +32,7 @@ export function restoreHalls(saved) {
   const halls = new Map();
   for (const hall of entries) {
     const { url } = getHall(hall.url);
+    if (version < 5 && url === retiredZapUrl) continue;
     if (halls.has(url)) continue;
     const entry = { name: String(hall.name).slice(0, 36), url };
     if (hall.disabled === true) entry.disabled = true;
@@ -45,14 +44,9 @@ export function restoreHalls(saved) {
       if (!halls.has(hall.url)) halls.set(hall.url, { ...hall, disabled: true });
     }
   }
-  if (version < 4) {
-    let active = [...halls.values()].filter(hall => !hall.disabled).length;
-    for (const hall of newHalls) {
-      if (halls.has(hall.url)) continue;
-      const disabled = active >= maxHalls;
-      halls.set(hall.url, disabled ? { ...hall, disabled } : { ...hall });
-      if (!disabled) active++;
-    }
+  if (version < 4 && !halls.has(walldorf.url)) {
+    const active = [...halls.values()].filter(hall => !hall.disabled).length;
+    halls.set(walldorf.url, active >= maxHalls ? { ...walldorf, disabled: true } : { ...walldorf });
   }
   return [...halls.values()];
 }

@@ -1,6 +1,6 @@
 # Tennishallen rund um Mannheim
 
-Lokaler Wochenplan für freie Tennis-Hallenplätze. Viernheim, Schriesheim, Friedrichsfeld, Rheinau, Plankstadt, Pawlik in Ladenburg, Eppelheim, das Sportcenter Tröndle, Hockenheim, Walldorf und ZAP Nußloch sind vorausgewählt.
+Lokaler Wochenplan für freie Tennis-Hallenplätze. Viernheim, Schriesheim, Friedrichsfeld, Rheinau, Plankstadt, Pawlik in Ladenburg, Eppelheim, das Sportcenter Tröndle, Hockenheim und Walldorf sind vorausgewählt.
 
 ```bash
 npm start
