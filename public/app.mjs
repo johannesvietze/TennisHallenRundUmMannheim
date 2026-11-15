@@ -93,8 +93,8 @@ function displayHours() {
     Array.from({ length: 17 }, (_, index) => 7 + index);
 }
 
-function activeHalls() {
-  return halls.filter(hall => !hallSelect.value || hallSelect.value === hall.url);
+function enabledHalls() {
+  return halls.filter(hall => !hall.disabled);
 }
 
 function slotFor(hall, date, hour, now) {
@@ -147,7 +147,7 @@ function slotCell(date, hour, visibleHalls, now) {
 function renderGrid() {
   const dates = weekDates(monday);
   const now = berlinClock();
-  const visibleHalls = activeHalls();
+  const visibleHalls = enabledHalls().filter(hall => !hallSelect.value || hallSelect.value === hall.url);
   const header = element('tr');
   const time = element('th', 'time-column', 'Uhrzeit');
   time.scope = 'col';
@@ -164,7 +164,9 @@ function renderGrid() {
 
   const body = document.createDocumentFragment();
   if (!visibleHalls.length) {
-    const cell = element('td', 'empty', 'Füge unter „Meine Hallen“ einen Buchungsplan hinzu.');
+    const message = halls.length ? 'Aktiviere unter „Meine Hallen“ eine Halle.' :
+      'Füge unter „Meine Hallen“ einen Buchungsplan hinzu.';
+    const cell = element('td', 'empty', message);
     cell.colSpan = 8;
     const row = element('tr');
     row.append(cell);
@@ -185,26 +187,28 @@ function renderGrid() {
 
 function renderHallFilter() {
   const selected = hallSelect.value;
-  hallSelect.replaceChildren(new Option('Alle Hallen', ''), ...halls.map(hall => new Option(hall.name, hall.url)));
-  if (halls.some(hall => hall.url === selected)) hallSelect.value = selected;
+  const enabled = enabledHalls();
+  hallSelect.replaceChildren(new Option('Alle Hallen', ''), ...enabled.map(hall => new Option(hall.name, hall.url)));
+  if (enabled.some(hall => hall.url === selected)) hallSelect.value = selected;
 }
 
 function render() {
+  const enabled = enabledHalls();
   $('#week-number').textContent = `Kalenderwoche ${weekNumber(monday)}`;
   $('#week-title').textContent = weekTitle(monday);
   $('#previous').disabled = monday <= addDays(thisWeek, -7);
   $('#next').disabled = monday >= addDays(thisWeek, 7 * 52);
   $('#this-week').setAttribute('aria-pressed', monday === thisWeek);
   $('#next-week').setAttribute('aria-pressed', monday === nextWeek);
-  $('#hall-count').textContent = halls.length;
-  refreshButton.disabled = loading || !halls.length;
+  $('#hall-count').textContent = enabled.length;
+  refreshButton.disabled = loading || !enabled.length;
   refreshButton.classList.toggle('refreshing', loading);
   $('#calendar-scroll').setAttribute('aria-busy', String(loading));
 
   const checkedTimes = [...results.values()].map(result => result.checkedAt).filter(Boolean).sort();
   $('#updated').textContent = loading ? 'Lade Buchungspläne …' :
     checkedTimes.length ? `Stand ${clockFormat.format(new Date(checkedTimes[0]))} Uhr` : '';
-  const errors = halls.filter(hall => results.get(hall.url)?.error);
+  const errors = enabled.filter(hall => results.get(hall.url)?.error);
   const notice = $('#notice');
   notice.hidden = !errors.length;
   notice.textContent = errors.map(hall => `${hall.name}: ${results.get(hall.url).error}`).join(' ');
@@ -222,8 +226,9 @@ function render() {
 
 async function refresh(refreshNow = false) {
   const id = ++requestId;
+  const enabled = enabledHalls();
   if (!refreshNow) results = new Map();
-  loading = Boolean(halls.length);
+  loading = Boolean(enabled.length);
   render();
   if (!loading) return;
 
@@ -231,7 +236,7 @@ async function refresh(refreshNow = false) {
     const response = await fetch('/api/availability', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ monday, urls: halls.map(hall => hall.url), refresh: refreshNow })
+      body: JSON.stringify({ monday, urls: enabled.map(hall => hall.url), refresh: refreshNow })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
@@ -239,7 +244,7 @@ async function refresh(refreshNow = false) {
     results = new Map(data.halls.map(hall => [hall.url, hall]));
   } catch {
     if (id !== requestId) return;
-    results = new Map(halls.map(hall => [hall.url, { error: 'Der Buchungsplan konnte nicht geladen werden.' }]));
+    results = new Map(enabled.map(hall => [hall.url, { error: 'Der Buchungsplan konnte nicht geladen werden.' }]));
   } finally {
     if (id === requestId) {
       loading = false;
@@ -279,21 +284,26 @@ function showDetails(date, hour, entries) {
   details.showModal();
 }
 
-function saveHalls(next) {
+function saveHalls(next, focusUrl) {
+  if (next.filter(hall => !hall.disabled).length > maxHalls) {
+    showHallError(`Es können bis zu ${maxHalls} Hallen gleichzeitig aktiv sein.`);
+    return false;
+  }
   try {
     localStorage.setItem(storageKey, JSON.stringify({ version: hallListVersion, halls: next }));
   } catch {
     showHallError('Die Hallenliste kann in diesem Browser nicht gespeichert werden.');
     return false;
   }
+  showHallError('');
   halls = next;
-  renderHallList();
+  renderHallList(focusUrl);
   renderHallFilter();
   refresh();
   return true;
 }
 
-function renderHallList() {
+function renderHallList(focusUrl) {
   const items = halls.map(hall => {
     const row = element('div', 'hall-item');
     const info = element('div');
@@ -304,14 +314,19 @@ function renderHallList() {
     host.target = '_blank';
     host.rel = 'noopener noreferrer';
     info.append(title, host);
-    const remove = element('button', 'button small', 'Entfernen');
-    remove.type = 'button';
-    remove.setAttribute('aria-label', `${hall.name} entfernen`);
-    remove.addEventListener('click', () => saveHalls(halls.filter(value => value !== hall)));
-    row.append(info, remove);
+    const action = hall.disabled ? 'Aktivieren' : 'Deaktivieren';
+    const toggle = element('button', 'button small', action);
+    toggle.type = 'button';
+    toggle.setAttribute('aria-label', `${action}: ${hall.name}`);
+    toggle.addEventListener('click', () => {
+      saveHalls(halls.map(entry => entry === hall ? { ...entry, disabled: !hall.disabled } : entry), hall.url);
+    });
+    row.append(info, toggle);
     return row;
   });
   $('#hall-list').replaceChildren(...items);
+  const focusIndex = halls.findIndex(hall => hall.url === focusUrl);
+  items[focusIndex]?.querySelector('button').focus();
 }
 
 function showHallError(message) {
@@ -346,9 +361,10 @@ $('#hall-form').addEventListener('submit', event => {
     const name = form.get('name').trim();
     const { url } = getHall(form.get('url').trim());
     if (!name) throw new Error('Bitte gib der Halle einen Namen.');
-    if (halls.some(hall => hall.url === url)) throw new Error('Dieser Buchungsplan ist bereits hinterlegt.');
+    const existing = halls.find(hall => hall.url === url);
+    if (existing?.disabled) throw new Error('Dieser Buchungsplan ist ausgeblendet und kann unter „Meine Hallen“ aktiviert werden.');
+    if (existing) throw new Error('Dieser Buchungsplan ist bereits hinterlegt.');
     if (halls.length >= maxHalls) throw new Error(`Es können bis zu ${maxHalls} Hallen gespeichert werden.`);
-    showHallError('');
     if (saveHalls([...halls, { name, url }])) event.target.reset();
   } catch (error) {
     showHallError(error.message);

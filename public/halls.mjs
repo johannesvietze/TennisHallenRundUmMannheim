@@ -16,21 +16,31 @@ const hockenheim = { name: 'Hockenheim', url: 'https://tc-hockenheim.ebusy.de/co
 
 export const defaultHalls = [...originalHalls, ...additionalHalls, hockenheim];
 export const maxHalls = 16;
-export const hallListVersion = 2;
+export const hallListVersion = 3;
 
 export function restoreHalls(saved) {
+  const version = saved?.version ?? 1;
   let entries = saved?.halls ?? defaultHalls;
   if (Array.isArray(saved)) {
     entries = [...saved, ...additionalHalls, hockenheim];
-  } else if (saved?.halls && (saved.version ?? 1) < hallListVersion) {
+  } else if (saved?.halls && version < 2) {
     entries = [...saved.halls, hockenheim];
   }
   const halls = new Map();
   for (const hall of entries) {
     const { url } = getHall(hall.url);
-    if (!halls.has(url)) halls.set(url, { name: String(hall.name).slice(0, 36), url });
+    if (halls.has(url)) continue;
+    const entry = { name: String(hall.name).slice(0, 36), url };
+    if (hall.disabled === true) entry.disabled = true;
+    halls.set(url, entry);
+    if (version < 3 && halls.size === maxHalls) break;
   }
-  return [...halls.values()].slice(0, maxHalls);
+  if (version < 3) {
+    for (const hall of defaultHalls) {
+      if (!halls.has(hall.url)) halls.set(hall.url, { ...hall, disabled: true });
+    }
+  }
+  return [...halls.values()];
 }
 
 export function getHall(value) {

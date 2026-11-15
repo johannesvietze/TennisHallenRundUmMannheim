@@ -1,15 +1,37 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { defaultHalls, getHall, hallListVersion, restoreHalls } from '../public/halls.mjs';
+import { defaultHalls, getHall, hallListVersion, maxHalls, restoreHalls } from '../public/halls.mjs';
 import { parseEbusyGrid, ebusyHours, sportisionHours } from '../providers.mjs';
 
 test('Neue Hallen ergänzen die zuvor gespeicherte Auswahl', () => {
   const migrated = restoreHalls([defaultHalls[0], { name: 'Eigene Halle', url: 'https://app.tennis04.com/de/eigene-halle/buchungsplan' }]);
-  assert.equal(migrated.length, 9);
+  assert.equal(migrated.filter(hall => !hall.disabled).length, 9);
   assert.equal(migrated[1].name, 'Eigene Halle');
-  assert.ok(!migrated.some(hall => hall.name === 'Schriesheim'));
+  assert.deepEqual(migrated.find(hall => hall.name === 'Schriesheim'), { ...defaultHalls[1], disabled: true });
   assert.equal(migrated.filter(hall => hall.name === 'Eppelheim').length, 1);
   assert.deepEqual(restoreHalls({ version: hallListVersion, halls: [] }), []);
+});
+
+test('Die gespeicherte Liste behält ausgeblendete und wieder aktivierte eigene Hallen', () => {
+  const custom = { name: 'Eigene Halle', url: 'https://app.tennis04.com/de/eigene-halle/buchungsplan' };
+  for (const disabled of [true, false]) {
+    const hall = { ...custom, disabled };
+    const [restored] = restoreHalls({ version: hallListVersion, halls: [hall] });
+    assert.equal(Boolean(restored.disabled), disabled);
+    assert.equal(restored.name, custom.name);
+    assert.equal(restored.url, custom.url);
+  }
+});
+
+test('Entfernte Standardhallen bleiben auch bei einer vollen alten Liste reaktivierbar', () => {
+  const customHalls = Array.from({ length: maxHalls }, (_, index) => ({
+    name: `Eigene Halle ${index + 1}`,
+    url: `https://app.tennis04.com/de/eigene-halle-${index + 1}/buchungsplan`
+  }));
+  const migrated = restoreHalls({ version: 2, halls: customHalls });
+  assert.deepEqual(migrated.filter(hall => !hall.disabled), customHalls);
+  assert.deepEqual(migrated.filter(hall => hall.disabled), defaultHalls.map(hall => ({ ...hall, disabled: true })));
+  assert.deepEqual(restoreHalls({ version: hallListVersion, halls: migrated }), migrated);
 });
 
 test('Die neuen Links ergeben tennis04-, Sportision- und eBuSy-Quellen', () => {
