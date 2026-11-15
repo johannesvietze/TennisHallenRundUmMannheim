@@ -133,3 +133,21 @@ test('Sportision meldet nur eine volle freie Stunde und trennt verborgene Belegu
   assert.equal(sportisionHours({ data: [booked] })[17].status, 'occupied');
   assert.equal(sportisionHours({ data: [court] })[18].status, 'closed');
 });
+
+test('Sportision kennzeichnet unvollständige Tage auch bei einem bestätigten freien Platz', async t => {
+  const hall = getHall('https://www.sportision.de/club/tennisschule-pawlik-1');
+  const dates = ['2026-11-16', '2026-11-17'];
+  const court = { name: 'Halle 1', group_name: 'Hallenplätze',
+    opening_hours: { start: '17:00', end: '18:00' }, slots: [{ start: 17 * 60, width: 60, data: null }] };
+  t.mock.method(globalThis, 'fetch', async url => Response.json({
+    data: url.searchParams.get('date').startsWith(dates[0])
+      ? [court, { ...court, name: 'Halle 2', occupancy_hidden: true }]
+      : [court]
+  }));
+
+  const { days } = await loadAvailability(hall, dates);
+
+  assert.deepEqual(days[0].hours[17], { status: 'free', courts: ['Halle 1'] });
+  assert.equal(days[0].incomplete, true);
+  assert.equal(days[1].incomplete, undefined);
+});

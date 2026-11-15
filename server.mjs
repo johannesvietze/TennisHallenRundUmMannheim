@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises';
 import { addDays, berlinClock, mondayFor, weekDates } from './public/dates.mjs';
 import { getHall, maxHalls } from './public/halls.mjs';
 import { loadAvailability } from './availability.mjs';
-import { getVisits } from './visits.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const onRender = process.env.RENDER === 'true';
@@ -67,9 +66,6 @@ const server = createServer(async (request, response) => {
     return json(response, 403, { error: 'Die App ist nur lokal erreichbar.' });
   }
   const path = request.url?.split('?')[0];
-  if (request.method === 'GET' && path === '/api/visits') {
-    return json(response, 200, { visits: await getVisits() });
-  }
   if (request.method === 'POST' && path === '/api/availability') {
     if (request.headers['sec-fetch-site'] === 'cross-site' ||
         request.headers['content-type']?.split(';')[0] !== 'application/json') {

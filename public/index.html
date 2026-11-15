@@ -14,10 +14,8 @@
       <a class="brand" href="/" aria-label="Tennishallen rund um Mannheim, Startseite"><span class="brand-icon" aria-hidden="true"><i></i></span>Tennishallen</a>
       <div class="site-actions">
         <button type="button" id="manage" class="button small"><span class="icon icon-court" aria-hidden="true"></span> Meine Hallen <span id="hall-count" class="count"></span></button>
-        <div id="site-visits" class="site-visits" hidden>
-          <strong></strong>
-          <span>Besuche · 7 Tage</span>
-        </div>
+        <img src="https://hits.sh/github.com/johannesvietze/TennisHallenRundUmMannheim.svg?label=Aufrufe&amp;labelColor=173e31&amp;color=315a31"
+             alt="Aufrufzähler" height="20" decoding="async" referrerpolicy="no-referrer">
       </div>
     </div>
   </header>
@@ -57,6 +55,7 @@
           <button type="button" id="refresh" class="button icon-button" aria-label="Buchungspläne aktualisieren" title="Aktualisieren"><span class="icon icon-refresh" aria-hidden="true">↻</span></button>
         </div>
       </div>
+      <div id="availability-warning" class="availability-warning" role="alert"></div>
       <div id="notice" class="notice" hidden role="status"></div>
       <div id="calendar-scroll" class="calendar-scroll" tabindex="0" role="region" aria-label="Wochenraster mit freien Plätzen">
         <table id="grid"><caption class="sr-only">Freie Tennisplätze pro Tag und Stunde</caption><thead></thead><tbody></tbody></table>
@@ -84,8 +83,5 @@
       <p id="hall-error" class="hall-error" role="alert" hidden></p>
     </div>
   </dialog>
-  <!-- Cloudflare Web Analytics -->
-  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "a45394c8d0ca49808222c33f93198de5"}'></script>
-  <!-- End Cloudflare Web Analytics -->
 </body>
 </html>

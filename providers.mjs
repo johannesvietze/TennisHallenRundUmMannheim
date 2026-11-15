@@ -239,7 +239,7 @@ export async function loadEbusy(hall, dates, upstream, fetchPrice = upstream) {
   return ebusyHours(grid, reservations, dates, ebusyRates(await tariffs, first));
 }
 
-export function sportisionHours(response) {
+function sportisionDay(response) {
   if (!Array.isArray(response?.data)) throw new Error('Der Sportision-Kalender ist unvollständig.');
   const courts = response.data.filter(court => !court.is_hidden && /halle|indoor/i.test(court.group_name) &&
     !otherSports.test(`${court.group_name} ${court.name}`));
@@ -260,7 +260,8 @@ export function sportisionHours(response) {
     return { ...court, ...opening, slots };
   });
 
-  return hours.map(hour => {
+  let incomplete = false;
+  const slots = hours.map(hour => {
     const start = hour * 60;
     const options = day.map(court => {
       let status;
@@ -272,14 +273,20 @@ export function sportisionHours(response) {
       else status = 'free';
       return { name: court.name, status };
     });
+    if (options.some(court => court.status === 'error')) incomplete = true;
     return hourStatus(options, ['error', 'unreleased', 'occupied']);
   });
+  return { hours: slots, ...(incomplete && { incomplete }) };
+}
+
+export function sportisionHours(response) {
+  return sportisionDay(response).hours;
 }
 
 export async function loadSportision(hall, dates, upstream) {
   return Promise.all(dates.map(async date => {
     const url = new URL(`https://backend.sportision.de/api/club/${hall.club}/space-manager/space/grid`);
     url.searchParams.set('date', date + 'T12:00:00.000Z');
-    return { date, hours: sportisionHours(await upstream(url, 'json')) };
+    return { date, ...sportisionDay(await upstream(url, 'json')) };
   }));
 }

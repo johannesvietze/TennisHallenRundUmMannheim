@@ -211,9 +211,9 @@ function render() {
   const checkedTimes = [...results.values()].map(result => result.checkedAt).filter(Boolean).sort();
   $('#updated').textContent = loading ? 'Lade Buchungspläne …' :
     checkedTimes.length ? `Stand ${clockFormat.format(new Date(checkedTimes[0]))} Uhr` : '';
+  renderAvailabilityWarning(enabled);
   const messages = enabled.flatMap(hall => {
     const result = results.get(hall.url);
-    if (result?.error) return [element('div', null, `${hall.name}: ${result.error}`)];
     if (!result?.bookingOnly) return [];
     const message = element('div', null, `${hall.name}: `);
     message.append(bookingLink(hall, undefined, 'Verfügbarkeit und Preise bei Eversports ↗'));
@@ -232,6 +232,30 @@ function render() {
   unreleased.append(element('span', 'legend-unreleased'), element('span', null, 'Noch nicht freigegeben'));
   legend.replaceChildren(free, occupied, unreleased);
   renderGrid();
+}
+
+function renderAvailabilityWarning(enabled) {
+  const warning = $('#availability-warning');
+  const issues = enabled.flatMap(hall => {
+    const result = results.get(hall.url);
+    const message = result?.error ?? (result?.days?.some(day => day.incomplete)
+      ? 'Für manche Zeiten fehlen Verfügbarkeitsdaten.'
+      : null);
+    if (!message) return [];
+
+    const item = element('li');
+    const link = bookingLink(hall, monday);
+    link.setAttribute('aria-label', `Zum Buchungsplan von ${hall.name}`);
+    item.append(element('strong', null, hall.name), document.createTextNode(` · ${message} `), link);
+    return [item];
+  });
+  if (issues.length) {
+    const list = element('ul');
+    list.append(...issues);
+    warning.replaceChildren(element('h3', null, 'Verfügbarkeit nicht vollständig'), list);
+  } else {
+    warning.replaceChildren();
+  }
 }
 
 async function refresh(refreshNow = false) {
@@ -355,21 +379,6 @@ function navigate(week) {
   refresh();
 }
 
-async function showVisits() {
-  try {
-    const response = await fetch('/api/visits');
-    if (!response.ok) return;
-    const { visits } = await response.json();
-    if (!Number.isSafeInteger(visits) || visits < 0) return;
-
-    const counter = $('#site-visits');
-    counter.querySelector('strong').textContent = visits.toLocaleString('de-DE');
-    counter.hidden = false;
-  } catch {
-    // Der Wochenplan bleibt auch ohne Besuchszahl nutzbar.
-  }
-}
-
 for (let hour = 0; hour < 24; hour++) hourSelect.add(new Option(hourRange(hour) + ' Uhr', hour));
 hourSelect.addEventListener('change', renderGrid);
 hallSelect.addEventListener('change', renderGrid);
@@ -386,4 +395,3 @@ $('#manage').addEventListener('click', () => {
 
 renderHallFilter();
 refresh();
-showVisits();

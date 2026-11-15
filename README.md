@@ -14,10 +14,4 @@ Unter **Meine Hallen** lassen sich vorhandene Hallen aktivieren oder deaktiviere
 
 ## Besuchszähler
 
-Der Zähler neben **Meine Hallen** zeigt die von Cloudflare erfassten Besuche der letzten sieben Tage. Der Server speichert die Zahl für fünf Minuten zwischen. Setze diese Umgebungsvariablen auf dem Server, bei Render in den Einstellungen unter **Environment**.
-
-- `CLOUDFLARE_ACCOUNT_ID` ist die [Cloudflare-Konto-ID](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/).
-- `CLOUDFLARE_WEB_ANALYTICS_SITE_TAG` ist die Kennung der Website. Öffne den Bericht für diese Website in Cloudflare Web Analytics und kopiere den Wert hinter `siteTag~in=` aus der Adresszeile. Die Kennung steht auch als `site_tag` in der [Cloudflare-Site-Liste](https://developers.cloudflare.com/api/resources/rum/subresources/site_info/methods/list/).
-- `CLOUDFLARE_API_TOKEN` ist ein separater, geheimer [API-Token](https://developers.cloudflare.com/analytics/graphql-api/getting-started/authentication/) mit **Account → Account Analytics → Read** für dieses Konto.
-
-Der Zähler erscheint, sobald der Server eine Besuchszahl erhält.
+Der Zähler neben **Meine Hallen** zeigt die Gesamtzahl der Aufrufe seit seiner Einbindung. Der Browser lädt das Bild von Hits.sh, wo auch der Zählerstand gespeichert wird. Erneutes Laden kann als weiterer Aufruf zählen. Für den Zähler sind auf Render keine Umgebungsvariablen und kein Speicher nötig. [Hits.sh-Dokumentation](https://github.com/silentsoft/hits#readme)
