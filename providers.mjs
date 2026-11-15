@@ -1,9 +1,11 @@
 import { addDays } from './public/dates.mjs';
 import { bookingUrl, ebusyDate } from './public/halls.mjs';
+import { euroCents, hourlyPrice, withCourtPrices } from './prices.mjs';
 
 const minutesPerDay = 1440;
 const hours = Array.from({ length: 24 }, (_, hour) => hour);
 const otherSports = /squash|padel|badminton|pickleball|tischtennis/i;
+const weekdays = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
 function minutes(time) {
   if (typeof time !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(time)) {
@@ -92,7 +94,7 @@ export function parseEbusyGrid(html, selectedDate) {
   return { courts, slots, overnight: minutes(closes) > 0 && minutes(closes) < minutes(opens) };
 }
 
-export function ebusyHours(grid, source, dates) {
+export function ebusyHours(grid, source, dates, prices = new Map()) {
   if (!Array.isArray(source?.reservations) || !Array.isArray(source.courtRelations) ||
       source.suppressedReservationsCount !== 0) {
     throw new Error('eBuSy hat keine vollständige Belegung geliefert.');
@@ -114,11 +116,13 @@ export function ebusyHours(grid, source, dates) {
   return dates.map(date => {
     const slots = grid.slots.filter(slot => slot.date === date);
     const midnight = dayMinutes(date);
+    const weekday = new Date(date).getUTCDay();
     if (![...grid.courts.keys()].every(court => slots.some(slot => slot.court === court))) {
       throw new Error('Im eBuSy-Raster fehlen Plätze für die gewählte Woche.');
     }
     const courts = [...grid.courts].map(([id, name]) => ({
-      name, slots: slots.filter(slot => slot.court === id), reservations: reservations.get(id) ?? []
+      name, slots: slots.filter(slot => slot.court === id), reservations: reservations.get(id) ?? [],
+      rates: prices.get(`${id}:${weekday}`) ?? []
     }));
     return { date, hours: hours.map(hour => {
       const start = midnight + hour * 60;
@@ -135,29 +139,96 @@ export function ebusyHours(grid, source, dates) {
             status = 'unreleased';
           }
         }
-        return { name: court.name, status };
+        return { name: court.name, status, price: status === 'free' ? hourlyPrice(court.rates, hour * 60) : null };
       });
-      return hourStatus(options, ['unreleased', 'occupied']);
+      const slot = hourStatus(options, ['unreleased', 'occupied']);
+      return withCourtPrices(slot, options.filter(court => court.status === 'free').map(court => court.price));
     }) };
   });
 }
 
-export async function loadEbusy(hall, dates, upstream) {
-  async function fetchGrid(date, view) {
+function ebusyTariffs(html, url, fetchPrice) {
+  const singleBooking = /^Einzel(?:buchung|stunde)(?:[\s–-]+(?:Winter(?:saison)?|Sommer(?:saison)?))?(?:\s+\d{2,4}(?:\/\d{2,4})?)?$/i;
+  const ids = new Set();
+  for (const [, id, label] of html.matchAll(/<a\b[^>]*\bhref="[^"<>]*[?&]prices-for=(\d+)(?=[&"])[^"]*"[^>]*>([^<]*)<\/a>/g)) {
+    if (singleBooking.test(label.trim())) ids.add(id);
+  }
+
+  return Promise.all([...ids].map(async id => {
+    if (html.match(/\bpricesFor:\s*"(\d+)"/)?.[1] === id) return { id, html };
+    const priceUrl = new URL(url);
+    priceUrl.searchParams.set('prices-for', id);
+    try {
+      return { id, html: await fetchPrice(priceUrl, 'text') };
+    } catch {
+      return { id, html: null };
+    }
+  }));
+}
+
+function ebusyRates(tariffs, date) {
+  const rates = new Map();
+  function add(court, day, rate) {
+    const key = `${court}:${day}`;
+    if (!rates.has(key)) rates.set(key, []);
+    rates.get(key).push(rate);
+  }
+
+  for (const { id, html } of tariffs) {
+    if (html?.match(/\bcurrentDate:\s*"([^"]+)"/)?.[1] !== ebusyDate(date) ||
+        html.match(/\bpricesFor:\s*"(\d+)"/)?.[1] !== id) continue;
+    const encoded = html.match(/\bpriceZones:\s*("(?:\\.|[^"\\])*")/)?.[1];
+    let zones;
+    try {
+      zones = JSON.parse(JSON.parse(encoded));
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(zones)) continue;
+
+    for (const zone of zones) {
+      const day = weekdays.indexOf(zone?.weekday);
+      if (day < 0 || !Number.isSafeInteger(zone.court) || !/€|\bEUR\b/i.test(zone.priceLong)) continue;
+      const cents = euroCents(zone.price);
+      if (cents === null) continue;
+      let range;
+      try {
+        range = timeRange(zone.fromTime, zone.toTime);
+      } catch {
+        continue;
+      }
+      add(zone.court, day, { ...range, cents });
+      if (range.end > minutesPerDay) {
+        add(zone.court, (day + 1) % 7, { start: 0, end: range.end - minutesPerDay, cents });
+      }
+    }
+  }
+  return rates;
+}
+
+export async function loadEbusy(hall, dates, upstream, fetchPrice = upstream) {
+  function gridUrl(date, view) {
     const url = new URL(bookingUrl(hall, date));
     url.searchParams.set('view', view);
+    return url;
+  }
+
+  async function fetchGrid(url, date) {
     const [html, reservations] = await Promise.all([
       upstream(url, 'text'),
       upstream(url, 'json', { 'x-requested-with': 'XMLHttpRequest' })
     ]);
-    return { grid: parseEbusyGrid(html, date), reservations };
+    return { grid: parseEbusyGrid(html, date), reservations, html };
   }
 
   const first = dates[0];
-  const { grid, reservations } = await fetchGrid(first, 'WEEK');
+  const url = gridUrl(first, 'WEEK');
+  const { grid, reservations, html } = await fetchGrid(url, first);
+  const tariffs = ebusyTariffs(html, url, fetchPrice);
   if (grid.overnight) {
     // The first morning's slots are shown at the end of the previous booking day.
-    const previous = await fetchGrid(addDays(first, -1), 'DAY');
+    const previousDay = addDays(first, -1);
+    const previous = await fetchGrid(gridUrl(previousDay, 'DAY'), previousDay);
     if (!Array.isArray(reservations.reservations) || !Array.isArray(previous.reservations.reservations) ||
         previous.reservations.suppressedReservationsCount !== 0) {
       throw new Error('eBuSy hat keine vollständige Belegung geliefert.');
@@ -165,7 +236,7 @@ export async function loadEbusy(hall, dates, upstream) {
     grid.slots.push(...previous.grid.slots.filter(slot => slot.date === first));
     reservations.reservations.push(...previous.reservations.reservations);
   }
-  return ebusyHours(grid, reservations, dates);
+  return ebusyHours(grid, reservations, dates, ebusyRates(await tariffs, first));
 }
 
 export function sportisionHours(response) {

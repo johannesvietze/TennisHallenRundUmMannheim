@@ -1,5 +1,6 @@
 import { bookingUrl, getHall } from './public/halls.mjs';
 import { loadEbusy, loadSportision } from './providers.mjs';
+import { euroCents, hourlyPrice, withCourtPrices } from './prices.mjs';
 export { getHall };
 
 const hours = Array.from({ length: 24 }, (_, hour) => hour);
@@ -16,7 +17,21 @@ const activeCourtStatuses = {
   unAvailable: 'unreleased'
 };
 
-export function parseActiveCourt(html, dates) {
+function schriesheimRateList(html) {
+  const content = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ');
+  if (!/Wintersaison\s+1\.\s*Oktober bis 30\.\s*April/i.test(content)) return [];
+  const rates = content.match(/Montag bis Freitag:([\s\S]+?)Samstag und Sonntag([\s\S]+?)(?:Die Preise|$)/i);
+  if (!rates) return [];
+  return rates.slice(1).map(section => Array.from(section.matchAll(
+    /(\d{2})\.(\d{2})\s*-\s*(\d{2})\.(\d{2})\s*Uhr\s+(\d+[.,]\d{2})\s*(?:&euro;|€)/g
+  ), ([, fromHour, fromMinute, toHour, toMinute, price]) => ({
+    start: 60 * Number(fromHour) + Number(fromMinute),
+    end: 60 * Number(toHour) + Number(toMinute),
+    cents: euroCents(Number(price.replace(',', '.')))
+  })));
+}
+
+export function parseActiveCourt(html, dates, prices = []) {
   const grid = html.match(/<div class="week-reservations-period-block">\s*<table[^>]*>([\s\S]*?)<\/table>/)?.[1];
   const gridDates = Array.from(grid?.matchAll(/class="week_d_date">\s*(\d{2})\.(\d{2})\.(\d{4})/g) ?? [],
     ([, day, month, year]) => `${year}-${month}-${day}`);
@@ -36,6 +51,9 @@ export function parseActiveCourt(html, dates) {
   }
 
   return dates.map((date, day) => {
+    const month = Number(date.slice(5, 7));
+    const weekday = new Date(date).getUTCDay();
+    const rates = month >= 10 || month <= 4 ? prices[Number(weekday === 0 || weekday === 6)] ?? [] : [];
     const rows = cellsByTime.map(row => parseActiveCourtCell(row[day]));
     const courtList = Array.from(rows[0].keys());
     if (rows.some(row => row.size !== courtList.length || courtList.some(court => !row.has(court)))) {
@@ -51,7 +69,9 @@ export function parseActiveCourt(html, dates) {
         const halves = [first.get(court), second.get(court)];
         return halves.includes('unreleased') && !halves.includes('occupied');
       });
-      return summarize(free.map(court => `Platz ${court}`), unreleased ? 'unreleased' : 'occupied');
+      const slot = summarize(free.map(court => `Platz ${court}`), unreleased ? 'unreleased' : 'occupied');
+      const price = hourlyPrice(rates, hour * 60);
+      return withCourtPrices(slot, free.map(() => price));
     }) };
   });
 }
@@ -78,7 +98,27 @@ function localTimestamp(value) {
   return timestamp;
 }
 
-export function tennis04Hours(group, bookings, dates) {
+function tennis04Season(group, date) {
+  return group.seasons.find(item => item.seasonBegin.slice(0, 10) <= date &&
+    (!item.seasonEnd || item.seasonEnd.slice(0, 10) >= date) &&
+    ((item.type === 'Winter' && group.winterVisible) || (item.type === 'Sommer' && group.summerVisible)));
+}
+
+function guestRates(legend, weekday) {
+  if (legend?.priceUnit !== 60 || legend.eventOccurences != null || !Array.isArray(legend.tariffTable)) return [];
+  const guest = legend.tariffTable.filter(tariff => typeof tariff?.group === 'string' &&
+    /^(?:gast|gäste|nichtmitglied(?:er)?|guests?)$/i.test(tariff.group.trim()));
+  if (guest.length !== 1 || !Array.isArray(guest[0].prices)) return [];
+
+  const minute = value => typeof value === 'string' ? Date.parse(value.slice(0, 19) + 'Z') / 60_000 : NaN;
+  return guest[0].prices.filter(price => price?.weekDay === weekday).map(price => {
+    const begin = minute(price.beginTime);
+    const start = ((begin % 1440) + 1440) % 1440;
+    return { start, end: start + minute(price.endTime) - begin, cents: euroCents(price.price) };
+  });
+}
+
+export function tennis04Hours(group, bookings, dates, legends = new Map()) {
   const courts = new Map(group.courts.map(court => [String(court.id), {
     name: court.title.replace(/^Pl\.\s*(\d+)$/i, 'Platz $1'),
     bookings: []
@@ -100,10 +140,9 @@ export function tennis04Hours(group, bookings, dates) {
     throw new Error('tennis04 hat keine gültigen Öffnungszeiten geliefert.');
   }
   return dates.map(date => {
-    const season = group.seasons.find(item => item.seasonBegin.slice(0, 10) <= date &&
-      (!item.seasonEnd || item.seasonEnd.slice(0, 10) >= date) &&
-      ((item.type === 'Winter' && group.winterVisible) || (item.type === 'Sommer' && group.summerVisible)));
+    const season = tennis04Season(group, date);
     const midnight = Date.parse(date + 'T00:00:00Z');
+    const rates = guestRates(legends.get(season?.id), new Date(midnight).getUTCDay() || 7);
 
     return { date, hours: hours.map(hour => {
       const minute = hour * 60;
@@ -113,16 +152,17 @@ export function tennis04Hours(group, bookings, dates) {
       const free = Array.from(courts.values())
         .filter(court => !court.bookings.some(booking => booking.start < end && booking.end > start))
         .map(court => court.name);
-      return summarize(free, 'occupied');
+      const price = hourlyPrice(rates, minute);
+      return withCourtPrices(summarize(free, 'occupied'), free.map(() => price));
     }) };
   });
 }
 
-async function upstream(url, format, headers = {}) {
+async function upstream(url, format, headers = {}, timeout = 12_000) {
   try {
     const response = await fetch(url, {
       redirect: 'error',
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(timeout),
       headers: { accept: format === 'json' ? 'application/json' : 'text/html', ...headers }
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -133,12 +173,17 @@ async function upstream(url, format, headers = {}) {
   }
 }
 
+function optionalPriceSource(url, format) {
+  return upstream(url, format, {}, 8_000).catch(() => null);
+}
+
 async function loadTennis04(url, dates) {
   const page = await upstream(url, 'text');
   const id = page.match(/window\[['"]_id['"]\]\s*=\s*(\d+)\s*;/)?.[1];
   if (!id) throw new Error('Der tennis04-Verein konnte nicht ermittelt werden.');
 
   const base = `https://app.tennis04.com/a/${id}/`;
+  const app = optionalPriceSource(base + 'app', 'json');
   const locations = await upstream(base + 'courtgroups', 'json');
   if (!Array.isArray(locations)) throw new Error('Die tennis04-Platzliste konnte nicht gelesen werden.');
   const groups = locations.flatMap(location => location.courtGroups)
@@ -149,16 +194,26 @@ async function loadTennis04(url, dates) {
   const end = dates.at(-1);
   const groupDays = await Promise.all(groups.map(async group => {
     const query = new URLSearchParams({ datefrom: start, dateto: end, courtgroup: group.id, useAccountingColors: 'false' });
-    const bookings = await upstream(base + 'bookings?' + query, 'json');
+    const [bookings, legends] = await Promise.all([
+      upstream(base + 'bookings?' + query, 'json'),
+      app.then(async settings => {
+        if (settings?.organisation?.isoCurrency !== 'EUR' || !Array.isArray(group.seasons)) return new Map();
+        const seasons = new Set(dates.map(date => tennis04Season(group, date)?.id).filter(Number.isInteger));
+        return new Map(await Promise.all([...seasons].map(async id => [id,
+          await optionalPriceSource(`${base}courtgroups/${encodeURIComponent(group.id)}/pricelegend?seasonId=${id}`, 'json')
+        ])));
+      })
+    ]);
     if (!Array.isArray(bookings)) throw new Error('Die tennis04-Belegungen konnten nicht gelesen werden.');
-    return tennis04Hours(group, bookings, dates);
+    return tennis04Hours(group, bookings, dates, legends);
   }));
 
   return dates.map((date, day) => ({ date, hours: hours.map(hour => {
     const slots = groupDays.map(group => group[day].hours[hour]);
     const free = slots.flatMap((slot, index) => groups.length === 1 ?
       slot.courts : slot.courts.map(court => `${groups[index].name} · ${court}`));
-    return summarize(free, slots.some(slot => slot.status === 'occupied') ? 'occupied' : 'closed');
+    const prices = slots.flatMap(slot => slot.courts.map((_, index) => slot.courtPrices?.[index] ?? null));
+    return withCourtPrices(summarize(free, slots.some(slot => slot.status === 'occupied') ? 'occupied' : 'closed'), prices);
   }) }));
 }
 
@@ -168,9 +223,12 @@ export async function loadAvailability(hall, dates) {
     const url = new URL(bookingUrl(hall, dates[0]));
     url.searchParams.set('week', '1');
     url.searchParams.delete('area_id');
-    days = parseActiveCourt(await upstream(url, 'text'), dates);
+    const [grid, prices] = await Promise.all([
+      upstream(url, 'text'), optionalPriceSource(new URL('/price.php', url), 'text')
+    ]);
+    days = parseActiveCourt(grid, dates, schriesheimRateList(prices ?? ''));
   } else if (hall.provider === 'ebusy') {
-    days = await loadEbusy(hall, dates, upstream);
+    days = await loadEbusy(hall, dates, upstream, optionalPriceSource);
   } else if (hall.provider === 'sportision') {
     days = await loadSportision(hall, dates, upstream);
   } else {

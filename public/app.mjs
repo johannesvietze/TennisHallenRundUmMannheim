@@ -18,6 +18,7 @@ const dateFormat = new Intl.DateTimeFormat('de-DE', {
 const clockFormat = new Intl.DateTimeFormat('de-DE', {
   hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin'
 });
+const euroFormat = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
 const statuses = {
   occupied: 'Kein Platz frei',
   unreleased: 'Noch nicht freigegeben',
@@ -113,13 +114,20 @@ function slotCell(date, hour, visibleHalls, now) {
 
   const day = weekdayFormat.format(new Date(date));
   const label = count ? `${count} ${count === 1 ? 'freier Platz' : 'freie Plätze'}` : statuses[status];
+  const prices = free.flatMap(entry => entry.courtPrices ?? []).filter(Number.isSafeInteger);
+  const priceLabel = prices.length ? `ab ${euroFormat.format(Math.min(...prices) / 100)}` : '';
   const button = element('button', `slot ${status}`);
   button.type = 'button';
-  button.setAttribute('aria-label', `${day}, ${hourRange(hour)} Uhr, ${label}${count ? ` in ${free.map(entry => entry.hall.name).join(', ')}` : ''}`);
+  button.setAttribute('aria-label', [
+    `${day}, ${hourRange(hour)} Uhr`,
+    count ? `${label} in ${free.map(entry => entry.hall.name).join(', ')}` : label,
+    priceLabel ? `${priceLabel} pro Stunde` : ''
+  ].filter(Boolean).join(', '));
   button.title = button.getAttribute('aria-label');
 
   if (count) {
     button.append(element('span', 'slot-count', `${count} frei`));
+    if (priceLabel) button.append(element('span', 'slot-price', priceLabel));
     for (const [index, entry] of free.slice(0, 2).entries()) {
       const name = element('span', 'slot-halls');
       name.append(dot(entry.hall), element('span', 'slot-name', entry.hall.name));
@@ -242,13 +250,24 @@ async function refresh(refreshNow = false) {
 
 function showDetails(date, hour, entries) {
   $('#details-title').textContent = `${weekdayFormat.format(new Date(date))}, ${dateFormat.format(new Date(date))} · ${hourRange(hour)}`;
-  const items = entries.map(({ hall, status, courts }) => {
+  const items = entries.map(({ hall, status, courts, courtPrices }) => {
     const card = element('article', 'detail-item');
     const title = element('h3');
     title.append(dot(hall), document.createTextNode(hall.name));
     card.append(title);
-    card.append(element('p', status === 'free' ? 'detail-free' : 'muted',
-      status === 'free' ? courts.join(', ') : statuses[status]));
+    if (status === 'free') {
+      const list = element('ul', 'detail-courts');
+      for (const [index, court] of courts.entries()) {
+        const price = courtPrices?.[index];
+        const item = element('li');
+        item.append(element('span', 'detail-free', court), element('span', 'muted',
+          Number.isSafeInteger(price) ? `${euroFormat.format(price / 100)}/Std.` : 'Preis nicht verfügbar'));
+        list.append(item);
+      }
+      card.append(list);
+    } else {
+      card.append(element('p', 'muted', statuses[status]));
+    }
     const link = element('a', 'source-link', 'Zum Buchungsplan ↗');
     link.href = bookingUrl(getHall(hall.url), date);
     link.target = '_blank';

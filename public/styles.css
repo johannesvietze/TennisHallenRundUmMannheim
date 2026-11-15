@@ -238,6 +238,7 @@ select:hover { border-color: #aac2af; }
 .slot:not(.free) { align-items: center; }
 .slot-marker { font-size: 11px; font-weight: 650; }
 .slot-count { font-size: 13px; font-weight: 800; white-space: nowrap; }
+.slot-price { margin-top: 2px; font-size: 11px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .slot-halls { display: flex; align-items: center; gap: 4px; max-width: 100%; margin-top: 2px; font-size: 10px; line-height: 1.25; }
 .slot-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .slot-extra { padding: 1px 3px; border-radius: 4px; background: #d9e7c7; font-weight: 750; }
@@ -277,6 +278,8 @@ dialog::backdrop { background: #142a2290; }
 .detail-item + .detail-item, .hall-item + .hall-item { margin-top: 8px; }
 .detail-item h3, .hall-item strong { display: flex; align-items: center; gap: 8px; font-size: 15px; }
 .detail-item p { margin-top: 5px; font-size: 13px; }
+.detail-courts { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 13px; }
+.detail-courts li { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 12px; }
 .detail-free { color: #315a31; font-weight: 650; }
 .source-link { display: inline-block; margin-top: 8px; font-size: 13px; color: #305341; }
 .hall-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
