@@ -218,6 +218,7 @@ async function loadTennis04(url, dates) {
 }
 
 export async function loadAvailability(hall, dates) {
+  if (hall.provider === 'eversports') return { bookingOnly: true };
   let days;
   if (hall.provider === 'activecourt') {
     const url = new URL(bookingUrl(hall, dates[0]));

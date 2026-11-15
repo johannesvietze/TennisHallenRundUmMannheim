@@ -25,6 +25,7 @@ const statuses = {
   closed: 'Außerhalb des Spielbetriebs',
   past: 'Zeit vergangen',
   error: 'Keine Daten verfügbar',
+  external: 'Verfügbarkeit im Buchungsplan prüfen',
   loading: 'Wird geladen'
 };
 
@@ -100,8 +101,9 @@ function enabledHalls() {
 function slotFor(hall, date, hour, now) {
   if (date < now.date || (date === now.date && hour <= now.hour)) return { status: 'past', courts: [] };
   if (loading && !results.size) return { status: 'loading', courts: [] };
-  return results.get(hall.url)?.days?.find(day => day.date === date)?.hours[hour] ??
-    { status: 'error', courts: [] };
+  const result = results.get(hall.url);
+  if (result?.bookingOnly) return { status: 'external', courts: [] };
+  return result?.days?.find(day => day.date === date)?.hours[hour] ?? { status: 'error', courts: [] };
 }
 
 function slotCell(date, hour, visibleHalls, now) {
@@ -110,7 +112,7 @@ function slotCell(date, hour, visibleHalls, now) {
   const free = entries.filter(entry => entry.status === 'free');
   const count = free.reduce((total, entry) => total + entry.courts.length, 0);
   const status = count ? 'free' :
-    ['loading', 'error', 'unreleased', 'occupied', 'past', 'closed'].find(key => entries.some(entry => entry.status === key));
+    ['loading', 'error', 'unreleased', 'occupied', 'external', 'past', 'closed'].find(key => entries.some(entry => entry.status === key));
 
   const day = weekdayFormat.format(new Date(date));
   const label = count ? `${count} ${count === 1 ? 'freier Platz' : 'freie Plätze'}` : statuses[status];
@@ -135,7 +137,8 @@ function slotCell(date, hour, visibleHalls, now) {
       button.append(name);
     }
   } else {
-    const marker = { occupied: '–', past: '·', closed: '·', unreleased: 'Ausstehend', error: 'Keine Daten', loading: '…' }[status];
+    const marker = { occupied: '–', past: '·', closed: '·', unreleased: 'Ausstehend', error: 'Keine Daten',
+      external: 'Buchungsplan ↗', loading: '…' }[status];
     button.append(element('span', 'slot-marker', marker));
   }
   if (['past', 'loading', 'closed'].includes(status)) button.disabled = true;
@@ -208,10 +211,17 @@ function render() {
   const checkedTimes = [...results.values()].map(result => result.checkedAt).filter(Boolean).sort();
   $('#updated').textContent = loading ? 'Lade Buchungspläne …' :
     checkedTimes.length ? `Stand ${clockFormat.format(new Date(checkedTimes[0]))} Uhr` : '';
-  const errors = enabled.filter(hall => results.get(hall.url)?.error);
+  const messages = enabled.flatMap(hall => {
+    const result = results.get(hall.url);
+    if (result?.error) return [element('div', null, `${hall.name}: ${result.error}`)];
+    if (!result?.bookingOnly) return [];
+    const message = element('div', null, `${hall.name}: `);
+    message.append(bookingLink(hall, undefined, 'Verfügbarkeit und Preise bei Eversports ↗'));
+    return [message];
+  });
   const notice = $('#notice');
-  notice.hidden = !errors.length;
-  notice.textContent = errors.map(hall => `${hall.name}: ${results.get(hall.url).error}`).join(' ');
+  notice.hidden = !messages.length;
+  notice.replaceChildren(...messages);
 
   const legend = $('#legend');
   const free = element('span', 'legend-item');
@@ -253,6 +263,14 @@ async function refresh(refreshNow = false) {
   }
 }
 
+function bookingLink(hall, date, label = 'Zum Buchungsplan ↗') {
+  const link = element('a', 'source-link', label);
+  link.href = bookingUrl(getHall(hall.url), date);
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  return link;
+}
+
 function showDetails(date, hour, entries) {
   $('#details-title').textContent = `${weekdayFormat.format(new Date(date))}, ${dateFormat.format(new Date(date))} · ${hourRange(hour)}`;
   const items = entries.map(({ hall, status, courts, courtPrices }) => {
@@ -273,11 +291,7 @@ function showDetails(date, hour, entries) {
     } else {
       card.append(element('p', 'muted', statuses[status]));
     }
-    const link = element('a', 'source-link', 'Zum Buchungsplan ↗');
-    link.href = bookingUrl(getHall(hall.url), date);
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    card.append(link);
+    card.append(bookingLink(hall, date));
     return card;
   });
   $('#details-content').replaceChildren(...items);
@@ -310,7 +324,8 @@ function renderHallList(focusUrl) {
     const title = element('strong');
     title.append(dot(hall), document.createTextNode(hall.name));
     const host = element('a', 'muted', new URL(hall.url).hostname.replace(/^www\./, ''));
-    host.href = hall.url;
+    const source = getHall(hall.url);
+    host.href = source.provider === 'eversports' ? bookingUrl(source) : hall.url;
     host.target = '_blank';
     host.rel = 'noopener noreferrer';
     info.append(title, host);

@@ -1,11 +1,45 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { defaultHalls, getHall, hallListVersion, maxHalls, restoreHalls } from '../public/halls.mjs';
+import { bookingUrl, defaultHalls, getHall, hallListVersion, maxHalls, restoreHalls } from '../public/halls.mjs';
+import { loadAvailability } from '../availability.mjs';
 import { parseEbusyGrid, ebusyHours, sportisionHours } from '../providers.mjs';
+
+const walldorfUrl = 'https://app.tennis04.com/de/walldorf/buchungsplan';
+const zapUrl = 'https://www.eversports.de/widget/w/mz2a2z';
+
+test('Walldorf und ZAP Nußloch werden in eine gespeicherte Liste übernommen', () => {
+  const existing = [
+    { ...defaultHalls[0], disabled: true },
+    { name: 'Eigener Name', url: 'https://app.tennis04.com/walldorf', disabled: true }
+  ];
+  assert.deepEqual(restoreHalls({ version: 3, halls: existing }), [
+    existing[0], { ...existing[1], url: walldorfUrl }, { name: 'ZAP Nußloch', url: zapUrl }
+  ]);
+  const fresh = restoreHalls(null);
+  assert.deepEqual(fresh.slice(-2), [{ name: 'Walldorf', url: walldorfUrl }, { name: 'ZAP Nußloch', url: zapUrl }]);
+});
+
+test('Walldorf und ZAP bleiben bei einer vollen Liste reaktivierbar', () => {
+  const existing = Array.from({ length: maxHalls }, (_, index) => ({
+    name: `Eigene Halle ${index + 1}`,
+    url: `https://app.tennis04.com/de/eigene-halle-${index + 1}/buchungsplan`
+  }));
+  const migrated = restoreHalls({ version: 3, halls: existing });
+  assert.deepEqual(migrated.filter(hall => !hall.disabled), existing);
+  assert.deepEqual(migrated.filter(hall => hall.disabled).map(hall => hall.url), [walldorfUrl, zapUrl]);
+});
+
+test('Eversports führt zum Tennis-Buchungsplan und liefert keine geschätzte Belegung', async () => {
+  const hall = getHall(`${zapUrl}/?sport=badminton`);
+  assert.deepEqual(hall, { provider: 'eversports', url: zapUrl });
+  assert.equal(bookingUrl(hall, '2026-11-16'), `${zapUrl}?sport=tennis`);
+  assert.throws(() => getHall('https://www.eversports.de.example.org/widget/w/mz2a2z'));
+  assert.deepEqual(await loadAvailability(hall, ['2026-11-16']), { bookingOnly: true });
+});
 
 test('Neue Hallen ergänzen die zuvor gespeicherte Auswahl', () => {
   const migrated = restoreHalls([defaultHalls[0], { name: 'Eigene Halle', url: 'https://app.tennis04.com/de/eigene-halle/buchungsplan' }]);
-  assert.equal(migrated.filter(hall => !hall.disabled).length, 9);
+  assert.equal(migrated.filter(hall => !hall.disabled).length, 11);
   assert.equal(migrated[1].name, 'Eigene Halle');
   assert.deepEqual(migrated.find(hall => hall.name === 'Schriesheim'), { ...defaultHalls[1], disabled: true });
   assert.equal(migrated.filter(hall => hall.name === 'Eppelheim').length, 1);
@@ -34,18 +68,18 @@ test('Entfernte Standardhallen bleiben auch bei einer vollen alten Liste reaktiv
   assert.deepEqual(restoreHalls({ version: hallListVersion, halls: migrated }), migrated);
 });
 
-test('Die neuen Links ergeben tennis04-, Sportision- und eBuSy-Quellen', () => {
+test('Die neuen Links ergeben tennis04-, Sportision-, eBuSy- und Eversports-Quellen', () => {
   assert.deepEqual(defaultHalls.slice(2).map(hall => getHall(hall.url).provider).sort(),
-    ['ebusy', 'ebusy', 'ebusy', 'ebusy', 'ebusy', 'sportision', 'tennis04']);
+    ['ebusy', 'ebusy', 'ebusy', 'ebusy', 'ebusy', 'eversports', 'sportision', 'tennis04', 'tennis04']);
   assert.throws(() => getHall('https://verein.ebusy.de.example.org/court-module/2812'));
 });
 
 test('Hockenheim wird einer gespeicherten Auswahl einmal hinzugefügt und seine Startseite verweist auf die Halle', () => {
-  const previous = defaultHalls.slice(0, -1);
+  const previous = defaultHalls.slice(0, -3);
   const migrated = restoreHalls({ halls: previous });
   const { url } = getHall('https://tc-hockenheim.ebusy.de/');
   assert.equal(url, 'https://tc-hockenheim.ebusy.de/court-module/451');
-  assert.deepEqual(migrated.at(-1), { name: 'Hockenheim', url });
+  assert.deepEqual(migrated.find(hall => hall.url === url), { name: 'Hockenheim', url });
   assert.equal(restoreHalls({ halls: migrated }).length, migrated.length);
   assert.deepEqual(restoreHalls({ version: hallListVersion, halls: previous }), previous);
 });
