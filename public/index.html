@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Freie Tennisplätze in Hallen rund um Mannheim im Wochenüberblick.">
+  <title>Tennishallen rund um Mannheim</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.mjs"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-inner">
+      <a class="brand" href="/" aria-label="Tennishallen rund um Mannheim, Startseite"><span class="brand-icon" aria-hidden="true"><i></i></span>Tennishallen</a>
+      <button type="button" id="manage" class="button small"><span class="icon icon-court" aria-hidden="true"></span> Meine Hallen <span id="hall-count" class="count"></span></button>
+    </div>
+  </header>
+  <main>
+    <section class="hero" aria-labelledby="page-title">
+      <div class="hero-copy">
+        <h1 id="page-title">Tennishallen rund um Mannheim</h1>
+        <p>Freie Hallenplätze im Wochenüberblick.</p>
+      </div>
+      <div class="court-decoration" aria-hidden="true"><div class="court-lines"><i></i></div><b></b></div>
+    </section>
+    <section class="calendar" aria-labelledby="week-title">
+      <div class="calendar-top">
+        <div class="week-caption">
+          <div class="week-meta" id="week-number"></div>
+          <h2 id="week-title"></h2>
+        </div>
+        <div class="week-controls">
+          <div class="week-arrows">
+            <button type="button" id="previous" class="button icon-button" aria-label="Vorherige Woche"><span class="icon icon-left" aria-hidden="true"></span></button>
+            <button type="button" id="next" class="button icon-button" aria-label="Folgende Woche"><span class="icon icon-right" aria-hidden="true"></span></button>
+          </div>
+          <div class="week-shortcuts">
+            <button type="button" id="this-week" class="button small">Diese Woche</button>
+            <button type="button" id="next-week" class="button small">Nächste Woche</button>
+          </div>
+        </div>
+      </div>
+      <div class="filters">
+        <div class="filter-group">
+          <label class="select-wrap"><span class="icon icon-clock" aria-hidden="true"></span><select id="hour" aria-label="Uhrzeit"><option value="">Alle Uhrzeiten</option></select></label>
+          <label class="select-wrap"><span class="icon icon-court" aria-hidden="true"></span><select id="hall-filter" aria-label="Halle"><option value="">Alle Hallen</option></select></label>
+        </div>
+        <div class="update-group">
+          <span id="updated" class="updated" aria-live="polite"></span>
+          <button type="button" id="refresh" class="button icon-button" aria-label="Buchungspläne aktualisieren" title="Aktualisieren"><span class="icon icon-refresh" aria-hidden="true">↻</span></button>
+        </div>
+      </div>
+      <div id="notice" class="notice" hidden role="status"></div>
+      <div id="calendar-scroll" class="calendar-scroll" tabindex="0" role="region" aria-label="Wochenraster mit freien Plätzen">
+        <table id="grid"><caption class="sr-only">Freie Tennisplätze pro Tag und Stunde</caption><thead></thead><tbody></tbody></table>
+      </div>
+      <footer class="calendar-footer">
+        <div id="legend" class="legend" aria-label="Legende"></div>
+        <span>Stundenraster · Ortszeit</span>
+      </footer>
+    </section>
+  </main>
+  <dialog id="details" aria-labelledby="details-title">
+    <div class="dialog-header">
+      <div><p class="dialog-kicker">Stundenübersicht</p><h2 id="details-title"></h2></div>
+      <form method="dialog"><button class="button icon-button" aria-label="Schließen">×</button></form>
+    </div>
+    <div id="details-content" class="dialog-content"></div>
+  </dialog>
+  <dialog id="halls-dialog" aria-labelledby="halls-title">
+    <div class="dialog-header">
+      <div><h2 id="halls-title">Meine Hallen</h2></div>
+      <form method="dialog"><button class="button icon-button" aria-label="Schließen">×</button></form>
+    </div>
+    <div class="dialog-content">
+      <div id="hall-list"></div>
+      <form id="hall-form" class="hall-form">
+        <h3>Halle hinzufügen</h3>
+        <p class="muted">Füge einen Buchungsplan von tennis04, eBuSy oder Sportision hinzu.</p>
+        <label>Name<input name="name" required maxlength="36" placeholder="Name oder Ort"></label>
+        <label>Link zum Buchungsplan<input name="url" required type="url" maxlength="350" placeholder="https://…"></label>
+        <p id="hall-error" class="form-error" role="alert" hidden></p>
+        <button type="submit" class="button primary">Halle hinzufügen</button>
+      </form>
+    </div>
+  </dialog>
+</body>
+</html>
