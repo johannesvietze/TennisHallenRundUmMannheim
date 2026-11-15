@@ -301,20 +301,19 @@ function showDetails(date, hour, entries) {
 function saveHalls(next, focusUrl) {
   if (next.filter(hall => !hall.disabled).length > maxHalls) {
     showHallError(`Es können bis zu ${maxHalls} Hallen gleichzeitig aktiv sein.`);
-    return false;
+    return;
   }
   try {
     localStorage.setItem(storageKey, JSON.stringify({ version: hallListVersion, halls: next }));
   } catch {
     showHallError('Die Hallenliste kann in diesem Browser nicht gespeichert werden.');
-    return false;
+    return;
   }
   showHallError('');
   halls = next;
   renderHallList(focusUrl);
   renderHallFilter();
   refresh();
-  return true;
 }
 
 function renderHallList(focusUrl) {
@@ -356,6 +355,21 @@ function navigate(week) {
   refresh();
 }
 
+async function showVisits() {
+  try {
+    const response = await fetch('/api/visits');
+    if (!response.ok) return;
+    const { visits } = await response.json();
+    if (!Number.isSafeInteger(visits) || visits < 0) return;
+
+    const counter = $('#site-visits');
+    counter.querySelector('strong').textContent = visits.toLocaleString('de-DE');
+    counter.hidden = false;
+  } catch {
+    // Der Wochenplan bleibt auch ohne Besuchszahl nutzbar.
+  }
+}
+
 for (let hour = 0; hour < 24; hour++) hourSelect.add(new Option(hourRange(hour) + ' Uhr', hour));
 hourSelect.addEventListener('change', renderGrid);
 hallSelect.addEventListener('change', renderGrid);
@@ -369,22 +383,7 @@ $('#manage').addEventListener('click', () => {
   showHallError('');
   hallDialog.showModal();
 });
-$('#hall-form').addEventListener('submit', event => {
-  event.preventDefault();
-  const form = new FormData(event.target);
-  try {
-    const name = form.get('name').trim();
-    const { url } = getHall(form.get('url').trim());
-    if (!name) throw new Error('Bitte gib der Halle einen Namen.');
-    const existing = halls.find(hall => hall.url === url);
-    if (existing?.disabled) throw new Error('Dieser Buchungsplan ist ausgeblendet und kann unter „Meine Hallen“ aktiviert werden.');
-    if (existing) throw new Error('Dieser Buchungsplan ist bereits hinterlegt.');
-    if (halls.length >= maxHalls) throw new Error(`Es können bis zu ${maxHalls} Hallen gespeichert werden.`);
-    if (saveHalls([...halls, { name, url }])) event.target.reset();
-  } catch (error) {
-    showHallError(error.message);
-  }
-});
 
 renderHallFilter();
 refresh();
+showVisits();

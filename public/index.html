@@ -12,7 +12,13 @@
   <header class="site-header">
     <div class="site-inner">
       <a class="brand" href="/" aria-label="Tennishallen rund um Mannheim, Startseite"><span class="brand-icon" aria-hidden="true"><i></i></span>Tennishallen</a>
-      <button type="button" id="manage" class="button small"><span class="icon icon-court" aria-hidden="true"></span> Meine Hallen <span id="hall-count" class="count"></span></button>
+      <div class="site-actions">
+        <button type="button" id="manage" class="button small"><span class="icon icon-court" aria-hidden="true"></span> Meine Hallen <span id="hall-count" class="count"></span></button>
+        <div id="site-visits" class="site-visits" hidden>
+          <strong></strong>
+          <span>Besuche · 7 Tage</span>
+        </div>
+      </div>
     </div>
   </header>
   <main>
@@ -75,14 +81,7 @@
     </div>
     <div class="dialog-content">
       <div id="hall-list"></div>
-      <form id="hall-form" class="hall-form">
-        <h3>Halle hinzufügen</h3>
-        <p class="muted">Füge einen Buchungsplan von tennis04, eBuSy oder Sportision oder einen Direktlink zu einem Eversports-Widget hinzu.</p>
-        <label>Name<input name="name" required maxlength="36" placeholder="Name oder Ort"></label>
-        <label>Link zum Buchungsplan<input name="url" required type="url" maxlength="350" placeholder="https://…"></label>
-        <p id="hall-error" class="form-error" role="alert" hidden></p>
-        <button type="submit" class="button primary">Halle hinzufügen</button>
-      </form>
+      <p id="hall-error" class="hall-error" role="alert" hidden></p>
     </div>
   </dialog>
   <!-- Cloudflare Web Analytics -->

@@ -33,7 +33,10 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 
 .site-header { background: #fff; border-bottom: 1px solid var(--line); }
 .site-inner, main { width: min(100% - 64px, 1184px); margin-inline: auto; }
-.site-inner { display: flex; align-items: center; justify-content: space-between; min-height: 68px; }
+.site-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-height: 68px; }
+.site-actions { display: flex; align-items: center; gap: 12px; margin-inline-start: auto; }
+.site-visits { text-align: right; color: var(--muted); font-size: 11px; line-height: 1.3; white-space: nowrap; }
+.site-visits strong { display: block; color: var(--ink); font-size: 15px; font-variant-numeric: tabular-nums; }
 .brand {
   display: inline-flex;
   align-items: center;
@@ -147,8 +150,6 @@ h1 { font-size: clamp(32px, 4.2vw, 53px); letter-spacing: -.065em; font-weight: 
 .button:disabled { opacity: .48; cursor: default; }
 .button.small { font-size: 13px; }
 .button[aria-pressed="true"] { background: #e8f0e4; border-color: #d5e3d0; color: #284c37; }
-.button.primary { background: var(--forest); border-color: var(--forest); color: white; }
-.button.primary:hover:not(:disabled) { background: #255741; }
 .count { min-width: 19px; padding: 1px 5px; background: #edf3e8; color: #33503b; border-radius: 5px; text-align: center; font-size: 11px; }
 .icon-button { width: 36px; padding: 0; }
 .icon { display: inline-block; position: relative; width: 14px; height: 14px; flex: none; color: #526a5b; }
@@ -285,18 +286,12 @@ dialog::backdrop { background: #142a2290; }
 .hall-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .hall-item a { display: inline-block; margin-top: 4px; font-size: 12px; }
 .muted { color: var(--muted); }
-.hall-form { display: grid; gap: 10px; margin-top: 19px; }
-.hall-form h3 { font-size: 16px; }
-.hall-form p { font-size: 13px; }
-.hall-form label { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
-.hall-form input { min-width: 0; padding: 9px; border-radius: 7px; border: 1px solid #cddace; }
-.hall-form button { justify-self: start; }
-.form-error { color: #922d25; }
+.hall-error { margin-top: 12px; color: #922d25; font-size: 13px; }
 
 @media (max-width: 720px) {
   .site-inner, main { width: calc(100% - 28px); }
   main { padding-top: 15px; }
-  .site-inner { min-height: 59px; }
+  .site-inner { min-height: 59px; padding-block: 8px; }
   .hero { min-height: 140px; padding: 23px 20px; border-radius: 15px; }
   .court-decoration { left: 76%; opacity: .65; }
   .hero p { margin-top: 8px; font-size: 14px; }
