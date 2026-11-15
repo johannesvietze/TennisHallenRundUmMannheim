@@ -14,12 +14,16 @@ const additionalHalls = [
 
 const hockenheim = { name: 'Hockenheim', url: 'https://tc-hockenheim.ebusy.de/court-module/451' };
 const walldorf = { name: 'Walldorf', url: 'https://app.tennis04.com/de/walldorf/buchungsplan' };
+const newHalls = [
+  { name: 'TC Weinheim 1902', url: 'https://tc02weinheim.ebusy.de/court-module/907' },
+  { name: 'LLZ Leimen', url: 'https://www.sportision.de/club/badischer-tennisverband-ev-2?tab=spaces' }
+];
 const retiredZapUrl = 'https://www.eversports.de/widget/w/mz2a2z';
 const previousDefaults = [...originalHalls, ...additionalHalls, hockenheim];
 
-export const defaultHalls = [...previousDefaults, walldorf];
+export const defaultHalls = [...previousDefaults, walldorf, ...newHalls];
 export const maxHalls = 16;
-export const hallListVersion = 5;
+export const hallListVersion = 6;
 
 export function restoreHalls(saved) {
   const version = saved?.version ?? 1;
@@ -44,9 +48,16 @@ export function restoreHalls(saved) {
       if (!halls.has(hall.url)) halls.set(hall.url, { ...hall, disabled: true });
     }
   }
-  if (version < 4 && !halls.has(walldorf.url)) {
-    const active = [...halls.values()].filter(hall => !hall.disabled).length;
-    halls.set(walldorf.url, active >= maxHalls ? { ...walldorf, disabled: true } : { ...walldorf });
+  const additions = version < 4 ? [walldorf, ...newHalls] : version < 6 ? newHalls : [];
+  let active = [...halls.values()].filter(hall => !hall.disabled).length;
+  for (const hall of additions) {
+    if (halls.has(hall.url)) continue;
+    if (active >= maxHalls) {
+      halls.set(hall.url, { ...hall, disabled: true });
+    } else {
+      halls.set(hall.url, { ...hall });
+      active++;
+    }
   }
   return [...halls.values()];
 }
